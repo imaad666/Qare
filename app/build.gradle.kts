@@ -40,6 +40,11 @@ android {
 }
 
 dependencies {
+    // ZXing core for QR encoding utils
+    implementation("com.google.zxing:core:3.5.3")
+
+    // ConstraintLayout for splash layout
+    implementation("androidx.constraintlayout:constraintlayout:2.2.0")
 
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
 
