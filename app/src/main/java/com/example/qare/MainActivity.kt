@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,10 +64,21 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Close
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.time.LocalDate
@@ -77,6 +89,10 @@ import androidx.compose.ui.unit.lerp
 import kotlin.random.Random
 import com.example.qare.ui.theme.QAreTheme
 import com.example.qare.ui.theme.RequinerFamily
+import com.example.qare.ui.theme.SuperchargeFamily
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -238,12 +254,15 @@ fun QAreAppScreen() {
             val scrollPx = min(listState.firstVisibleItemScrollOffset.toFloat(), collapseRangePx)
             val frac = scrollPx / collapseRangePx
             val qrSize = lerp(320.dp, 160.dp, frac)
+            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            var showAuthorDialog by remember { mutableStateOf(false) }
 
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 20.dp, end = 20.dp, bottom = 80.dp),
+                    .padding(start = 20.dp, end = 20.dp),
+                contentPadding = PaddingValues(bottom = 96.dp + bottomInset),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 item {
@@ -291,8 +310,8 @@ fun QAreAppScreen() {
                 // Pixel style dropdown
                 item {
                     StyleDropdown(
-                        label = "Pixel Style",
-                        options = PixelStyle.values().toList(),
+                        label = "Pixel",
+                        options = PixelStyle.values().filter { it != PixelStyle.Split },
                         selected = pixelStyle,
                         toLabel = { (friendlyPixelLabels[it] ?: it.name) },
                         onSelected = { sel ->
@@ -306,14 +325,13 @@ fun QAreAppScreen() {
                 // Eye outline dropdown
                 item {
                     StyleDropdown(
-                        label = "Eye Outline",
-                        options = EyeOutlineStyle.values().toList(),
+                        label = "Eye",
+                        options = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond },
                         selected = eyeOutlineStyle,
                         toLabel = { (mapOf(
                             EyeOutlineStyle.Square to "Square",
                             EyeOutlineStyle.Rounded to "Rounded",
                             EyeOutlineStyle.Circle to "Circle",
-                            EyeOutlineStyle.Diamond to "Diamond",
                             EyeOutlineStyle.Leaf to "Petal",
                             EyeOutlineStyle.Octagon to "Octagon",
                             EyeOutlineStyle.BoldFrame to "Bold Frame",
@@ -330,8 +348,8 @@ fun QAreAppScreen() {
                 // Pupil style dropdown
                 item {
                     StyleDropdown(
-                        label = "Pupil Style",
-                        options = PupilStyle.values().toList(),
+                        label = "Pupil",
+                        options = PupilStyle.values().filter { it != PupilStyle.TinyDot },
                         selected = pupilStyle,
                         toLabel = { (mapOf(
                             PupilStyle.Square to "Edged",
@@ -341,7 +359,6 @@ fun QAreAppScreen() {
                             PupilStyle.Circle to "Circle",
                             PupilStyle.Diamond to "Diamond",
                             PupilStyle.Cross to "Cross",
-                            PupilStyle.TinyDot to "Tiny Dot",
                             PupilStyle.ThickBorderDot to "Thick Border Dot"
                         )[it] ?: it.toString()) },
                         onSelected = { sel ->
@@ -352,8 +369,8 @@ fun QAreAppScreen() {
                     )
                 }
                 item { Spacer(Modifier.height(16.dp)) }
-
-                item { Spacer(Modifier.height(96.dp)) }
+                // Animated gradient Author button
+                item { WildAuthorButton(text = "Author", onClick = { showAuthorDialog = true }) }
             }
 
             // Sticky bottom icon action bar
@@ -398,8 +415,13 @@ fun QAreAppScreen() {
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 20.dp)
+                    .navigationBarsPadding()
+                    .padding(start = 20.dp, top = 0.dp, end = 20.dp, bottom = 12.dp)
             )
+
+            if (showAuthorDialog) {
+                AuthorDialog(onDismiss = { showAuthorDialog = false })
+            }
         }
     }
 }
@@ -491,7 +513,7 @@ private fun BottomActionBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 0.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
@@ -499,11 +521,11 @@ private fun BottomActionBar(
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             RoundedActionButton(
-                pixelColor = pixelColor,
-                contentColor = iconColor,
+                pixelColor = 0xFFEF4444.toInt(),
+                contentColor = ComposeColor.White,
                 onClick = onReset,
                 contentDescription = "Reset",
-                icon = { Icon(Icons.Filled.Restore, contentDescription = null, tint = iconColor) }
+                icon = { Icon(Icons.Filled.Restore, contentDescription = null, tint = ComposeColor.White) }
             )
             RoundedActionButton(
                 pixelColor = pixelColor,
@@ -545,11 +567,143 @@ private fun RoundedActionButton(
             .size(size)
             .shadow(6.dp, shape)
             .background(ComposeColor(pixelColor), shape = shape)
+            .border(width = 2.dp, color = ComposeColor.Black, shape = shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         icon()
     }
+}
+
+@Composable
+private fun WildAuthorButton(text: String, onClick: () -> Unit) {
+    // Five independent oscillating centers for organic motion
+    val t = rememberInfiniteTransition(label = "wild")
+    val a by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(2200, easing = LinearEasing)), label = "a")
+    val b by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(2600, easing = LinearEasing)), label = "b")
+    val c by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3000, easing = LinearEasing)), label = "c")
+    val d by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3400, easing = LinearEasing)), label = "d")
+    val e by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3800, easing = LinearEasing)), label = "e")
+
+    val corner = 22.dp
+    Box(
+        modifier = Modifier
+            .wrapContentWidth()
+            .height(44.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(corner))
+            .background(ComposeColor.Black.copy(alpha = 0f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        // Fluid, non-repeating, fully opaque multi-radial gradient layer
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val r = kotlin.math.min(w, h) * 1.2f
+
+            val centers = listOf(
+                Offset(w * (0.3f + 0.16f * cos(a)), h * (0.5f + 0.18f * sin(a))),  // purple
+                Offset(w * (0.7f + 0.18f * cos(b)), h * (0.4f + 0.20f * sin(b))),  // blue
+                Offset(w * (0.5f + 0.20f * cos(c)), h * (0.6f + 0.18f * sin(c))),  // green
+                Offset(w * (0.4f + 0.22f * cos(d)), h * (0.45f + 0.20f * sin(d))), // red
+                Offset(w * (0.6f + 0.15f * cos(e)), h * (0.55f + 0.15f * sin(e)))  // yellow
+            )
+            val colors = listOf(
+                ComposeColor(0xFF7C3AED.toInt()), // purple
+                ComposeColor(0xFF3B82F6.toInt()), // blue
+                ComposeColor(0xFF22C55E.toInt()), // green
+                ComposeColor(0xFFEF4444.toInt()), // red
+                ComposeColor(0xFFF59E0B.toInt())  // yellow
+            )
+
+            // Paint overlapping opaque radial gradients to avoid straight lines and transparency
+            centers.forEachIndexed { i, center ->
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors[i], colors[i].copy(alpha = 0.9f), colors[i].copy(alpha = 0.8f)),
+                        center = center,
+                        radius = r
+                    ),
+                    center = center,
+                    radius = r
+                )
+            }
+        }
+
+        val display = text.trim().lowercase().replaceFirstChar { it.titlecase() }
+        Text(
+            text = display,
+            color = ComposeColor.White,
+            fontFamily = RequinerFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+    }
+}
+
+@Composable
+private fun AuthorDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = {},
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("About Author", fontFamily = RequinerFamily, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Imaad", fontFamily = RequinerFamily, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("java easy", fontFamily = RequinerFamily)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SocialIconVector(drawableName = "ic_linkedin") { openUrl(context, "https://in.linkedin.com/in/imaadwani") }
+                    SocialIconVector(drawableName = "ic_github") { openUrl(context, "https://github.com/imaad666") }
+                    SocialIconVector(drawableName = "ic_twitter_x") { openUrl(context, "https://x.com/thenotoriousimi") }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun SocialIconVector(drawableName: String, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val resId = remember(drawableName) {
+        context.resources.getIdentifier(drawableName, "drawable", context.packageName)
+    }
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(ComposeColor.Black)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (resId != 0) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = resId),
+                contentDescription = drawableName,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+private fun openUrl(context: Context, url: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        context.startActivity(intent)
+    } catch (_: Exception) {}
 }
 
 private fun exportQr(
