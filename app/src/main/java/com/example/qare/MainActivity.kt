@@ -650,22 +650,25 @@ private fun AuthorDialog(onDismiss: () -> Unit) {
         confirmButton = {},
         dismissButton = {},
         title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("About Author", fontFamily = RequinerFamily, fontWeight = FontWeight.Bold)
-                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "About Author",
+                    fontFamily = RequinerFamily,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterEnd)) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close")
+                }
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Imaad", fontFamily = RequinerFamily, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text("java easy", fontFamily = RequinerFamily)
                 Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
                     SocialIconVector(drawableName = "ic_linkedin") { openUrl(context, "https://in.linkedin.com/in/imaadwani") }
                     SocialIconVector(drawableName = "ic_github") { openUrl(context, "https://github.com/imaad666") }
                     SocialIconVector(drawableName = "ic_twitter_x") { openUrl(context, "https://x.com/thenotoriousimi") }
