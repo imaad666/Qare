@@ -9,7 +9,8 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
 
 enum class PixelStyle { Square, Rounded, Dot, Continuous }
-enum class EyeStyle { Square, Rounded, ThreeBars }
+enum class EyeOutlineStyle { Square, Rounded, Dotted }
+enum class PupilStyle { Square, Rounded, ThreeBars, ThreeBarsRounded }
 
 object QRCodeUtils {
     fun createStyledQr(
@@ -19,7 +20,8 @@ object QRCodeUtils {
         eyeColor: Int = Color.BLACK,
         backgroundColor: Int = Color.WHITE,
         pixelStyle: PixelStyle = PixelStyle.Rounded,
-        eyeStyle: EyeStyle = EyeStyle.Rounded
+        eyeOutlineStyle: EyeOutlineStyle = EyeOutlineStyle.Rounded,
+        pupilStyle: PupilStyle = PupilStyle.Rounded
     ): Bitmap {
         val hints = hashMapOf<EncodeHintType, Any>(
             EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.H
@@ -47,7 +49,7 @@ object QRCodeUtils {
         }
 
         // Draw eyes over modules so eye color always applies
-        drawEyes(canvas, modules, moduleSize, offsetX, offsetY, paintEye, backgroundColor, eyeStyle)
+        drawEyes(canvas, modules, moduleSize, offsetX, offsetY, paintEye, backgroundColor, eyeOutlineStyle, pupilStyle)
 
         return bitmap
     }
@@ -151,7 +153,8 @@ object QRCodeUtils {
         offsetY: Float,
         eyePaint: Paint,
         backgroundColor: Int,
-        eyeStyle: EyeStyle
+        eyeOutlineStyle: EyeOutlineStyle,
+        pupilStyle: PupilStyle
     ) {
         val eye = 7
         val positions = listOf(
@@ -160,34 +163,60 @@ object QRCodeUtils {
             0 to modules - eye // bottom-left
         )
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = backgroundColor }
-        val radius = if (eyeStyle == EyeStyle.Rounded) moduleSize else 0f
+        val radius = if (eyeOutlineStyle == EyeOutlineStyle.Rounded) moduleSize else 0f
         for ((ex, ey) in positions) {
             val l = offsetX + ex * moduleSize
             val t = offsetY + ey * moduleSize
             val r = l + eye * moduleSize
             val b = t + eye * moduleSize
-            when (eyeStyle) {
-                EyeStyle.Square, EyeStyle.Rounded -> {
+            // Draw eye outline ring
+            when (eyeOutlineStyle) {
+                EyeOutlineStyle.Square, EyeOutlineStyle.Rounded -> {
                     // Outer 7x7
                     canvas.drawRoundRect(l, t, r, b, radius, radius, eyePaint)
-                    // Inner 5x5 background
+                    // Inner 5x5 background to create ring
                     val l5 = l + moduleSize
                     val t5 = t + moduleSize
                     val r5 = r - moduleSize
                     val b5 = b - moduleSize
                     canvas.drawRoundRect(l5, t5, r5, b5, radius, radius, bgPaint)
-                    // Center 3x3
-                    val l3 = l + 2 * moduleSize
-                    val t3 = t + 2 * moduleSize
-                    val r3 = r - 2 * moduleSize
-                    val b3 = b - 2 * moduleSize
-                    canvas.drawRoundRect(l3, t3, r3, b3, radius, radius, eyePaint)
                 }
-                EyeStyle.ThreeBars -> {
+                EyeOutlineStyle.Dotted -> {
+                    val step = moduleSize
+                    // draw dots along the ring
+                    var x = l
+                    while (x <= r) {
+                        canvas.drawCircle(x, t, step * 0.25f, eyePaint)
+                        canvas.drawCircle(x, b, step * 0.25f, eyePaint)
+                        x += step
+                    }
+                    var y = t
+                    while (y <= b) {
+                        canvas.drawCircle(l, y, step * 0.25f, eyePaint)
+                        canvas.drawCircle(r, y, step * 0.25f, eyePaint)
+                        y += step
+                    }
+                }
+            }
+            // Draw pupil inside center 3x3
+            val l3 = l + 2 * moduleSize
+            val t3 = t + 2 * moduleSize
+            val r3 = r - 2 * moduleSize
+            val b3 = b - 2 * moduleSize
+            when (pupilStyle) {
+                PupilStyle.Square -> canvas.drawRect(l3, t3, r3, b3, eyePaint)
+                PupilStyle.Rounded -> canvas.drawRoundRect(l3, t3, r3, b3, moduleSize, moduleSize, eyePaint)
+                PupilStyle.ThreeBars, PupilStyle.ThreeBarsRounded -> {
+                    val barWidth = (r3 - l3) / 3f
+                    val corner = if (pupilStyle == PupilStyle.ThreeBarsRounded) moduleSize * 0.6f else 0f
                     for (i in 0..2) {
-                        val barL = l + i * (eye * moduleSize) / 3f
-                        val barR = l + (i + 1) * (eye * moduleSize) / 3f - moduleSize * 0.15f
-                        canvas.drawRect(barL, t, barR, b, eyePaint)
+                        val bl = l3 + i * barWidth
+                        val br = bl + barWidth - moduleSize * 0.1f
+                        if (corner > 0f) {
+                            canvas.drawRoundRect(bl, t3, br, b3, corner, corner, eyePaint)
+                        } else {
+                            canvas.drawRect(bl, t3, br, b3, eyePaint)
+                        }
                     }
                 }
             }

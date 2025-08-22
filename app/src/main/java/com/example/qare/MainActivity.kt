@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.time.LocalDate
@@ -42,6 +44,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.min
 import androidx.compose.ui.unit.lerp
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,7 +63,9 @@ private const val KEY_PIXEL_COLOR = "pixel_color"
 private const val KEY_EYE_COLOR = "eye_color"
 private const val KEY_BG_COLOR = "bg_color"
 private const val KEY_PIXEL_STYLE = "pixel_style"
-private const val KEY_EYE_STYLE = "eye_style"
+private const val KEY_EYE_STYLE = "eye_style" // legacy, will migrate to outline+pupil
+private const val KEY_EYE_OUTLINE_STYLE = "eye_outline_style"
+private const val KEY_PUPIL_STYLE = "pupil_style"
 
 @Composable
 fun QAreAppScreen() {
@@ -71,7 +76,8 @@ fun QAreAppScreen() {
 
     // Defaults
     var pixelStyle by remember { mutableStateOf(PixelStyle.Rounded) }
-    var eyeStyle by remember { mutableStateOf(EyeStyle.Rounded) }
+    var eyeOutlineStyle by remember { mutableStateOf(EyeOutlineStyle.Rounded) }
+    var pupilStyle by remember { mutableStateOf(PupilStyle.Rounded) }
     var pixelColor by remember { mutableStateOf(prefs.getInt(KEY_PIXEL_COLOR, Color.BLACK)) }
     var eyeColor by remember { mutableStateOf(prefs.getInt(KEY_EYE_COLOR, Color.BLACK)) }
     var bgColor by remember { mutableStateOf(prefs.getInt(KEY_BG_COLOR, blendWithWhite(pixelColor))) }
@@ -81,8 +87,20 @@ fun QAreAppScreen() {
         prefs.getString(KEY_PIXEL_STYLE, null)?.let { saved ->
             PixelStyle.values().firstOrNull { it.name == saved }?.let { pixelStyle = it }
         }
-        prefs.getString(KEY_EYE_STYLE, null)?.let { saved ->
-            EyeStyle.values().firstOrNull { it.name == saved }?.let { eyeStyle = it }
+        // Migrate legacy saved eye style string into outline
+        prefs.getString(KEY_EYE_STYLE, null)?.let { legacy ->
+            eyeOutlineStyle = when (legacy) {
+                "Rounded" -> EyeOutlineStyle.Rounded
+                "Square" -> EyeOutlineStyle.Square
+                "ThreeBars" -> EyeOutlineStyle.Rounded
+                else -> eyeOutlineStyle
+            }
+        }
+        prefs.getString(KEY_EYE_OUTLINE_STYLE, null)?.let { saved ->
+            EyeOutlineStyle.values().firstOrNull { it.name == saved }?.let { eyeOutlineStyle = it }
+        }
+        prefs.getString(KEY_PUPIL_STYLE, null)?.let { saved ->
+            PupilStyle.values().firstOrNull { it.name == saved }?.let { pupilStyle = it }
         }
     }
 
@@ -99,10 +117,10 @@ fun QAreAppScreen() {
             val inputStream = context.contentResolver.openInputStream(selectedUri)
             val bitmap = BitmapFactory.decodeStream(inputStream)
             if (bitmap != null) {
-                val image = InputImage.fromBitmap(bitmap, 0)
-                val scanner = BarcodeScanning.getClient()
-                scanner.process(image)
-                    .addOnSuccessListener { barcodes ->
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val scanner = BarcodeScanning.getClient()
+            scanner.process(image)
+                .addOnSuccessListener { barcodes ->
                         val first = barcodes.firstOrNull()?.rawValue
                         if (!first.isNullOrBlank()) {
                             parseRoll(first)?.let { roll ->
@@ -123,11 +141,7 @@ fun QAreAppScreen() {
         PixelStyle.Dot to "Dot",
         PixelStyle.Continuous to "Continuous"
     )
-    val friendlyEyeLabels = mapOf(
-        EyeStyle.Square to "Square",
-        EyeStyle.Rounded to "Rounded",
-        EyeStyle.ThreeBars to "Three Bars"
-    )
+    
 
     Box(
         modifier = Modifier
@@ -146,19 +160,20 @@ fun QAreAppScreen() {
                     }
                 }
             }
-        } else {
+                    } else {
             // Configured state with collapsing QR header
             val today = LocalDate.now(ZoneId.of("Asia/Kolkata"))
             val dateStr = today.format(DateTimeFormatter.ISO_DATE)
             val qrContent = "$rollNumber/$dateStr/student"
-            val qrBitmap = remember(qrContent, pixelColor, eyeColor, pixelStyle, eyeStyle) {
+            val qrBitmap = remember(qrContent, pixelColor, eyeColor, pixelStyle, eyeOutlineStyle, pupilStyle) {
                 generateQrBitmap(
                     qrContent = qrContent,
                     pixelColor = pixelColor,
                     eyeColor = eyeColor,
                     backgroundColor = bgColor,
                     pixelStyle = pixelStyle,
-                    eyeStyle = eyeStyle
+                    eyeOutlineStyle = eyeOutlineStyle,
+                    pupilStyle = pupilStyle
                 )
             }
 
@@ -191,12 +206,11 @@ fun QAreAppScreen() {
                     }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
-                item { Text("Customisation") }
-                item { Spacer(Modifier.height(8.dp)) }
+                // removed heading per request
                 // Pixel color single slider
                 item {
                     ColorHueSlider(
-                        label = "Pixel colour",
+                        label = "PIXEL COLOR",
                         currentColor = pixelColor,
                         onColorChange = { new ->
                             pixelColor = new
@@ -208,7 +222,7 @@ fun QAreAppScreen() {
                 // Eye color single slider
                 item {
                     ColorHueSlider(
-                        label = "Eye colour",
+                        label = "EYE COLOR",
                         currentColor = eyeColor,
                         onColorChange = { new ->
                             eyeColor = new
@@ -220,10 +234,10 @@ fun QAreAppScreen() {
                 // Pixel style dropdown
                 item {
                     StyleDropdown(
-                        label = "Pixel style",
+                        label = "PIXEL STYLE",
                         options = PixelStyle.values().toList(),
                         selected = pixelStyle,
-                        toLabel = { friendlyPixelLabels[it] ?: it.name },
+                        toLabel = { (friendlyPixelLabels[it] ?: it.name).uppercase() },
                         onSelected = { sel ->
                             pixelStyle = sel
                             prefs.edit().putString(KEY_PIXEL_STYLE, sel.name).apply()
@@ -231,16 +245,39 @@ fun QAreAppScreen() {
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
-                // Eye style dropdown
+                // Eye outline dropdown
                 item {
                     StyleDropdown(
-                        label = "Eye style",
-                        options = EyeStyle.values().toList(),
-                        selected = eyeStyle,
-                        toLabel = { friendlyEyeLabels[it] ?: it.name },
+                        label = "EYE OUTLINE",
+                        options = EyeOutlineStyle.values().toList(),
+                        selected = eyeOutlineStyle,
+                        toLabel = { (mapOf(
+                            EyeOutlineStyle.Square to "EDGED",
+                            EyeOutlineStyle.Rounded to "ROUNDED",
+                            EyeOutlineStyle.Dotted to "DOTTED"
+                        )[it] ?: it.name).uppercase() },
                         onSelected = { sel ->
-                            eyeStyle = sel
-                            prefs.edit().putString(KEY_EYE_STYLE, sel.name).apply()
+                            eyeOutlineStyle = sel
+                            prefs.edit().putString(KEY_EYE_OUTLINE_STYLE, sel.name).apply()
+                        }
+                    )
+                }
+                item { Spacer(Modifier.height(8.dp)) }
+                // Pupil style dropdown
+                item {
+                    StyleDropdown(
+                        label = "PUPIL STYLE",
+                        options = PupilStyle.values().toList(),
+                        selected = pupilStyle,
+                        toLabel = { (mapOf(
+                            PupilStyle.Square to "EDGED",
+                            PupilStyle.Rounded to "ROUNDED",
+                            PupilStyle.ThreeBars to "THREE BARS",
+                            PupilStyle.ThreeBarsRounded to "THREE BARS ROUNDED"
+                        )[it] ?: it.toString()).uppercase() },
+                        onSelected = { sel ->
+                            pupilStyle = sel
+                            prefs.edit().putString(KEY_PUPIL_STYLE, sel.name).apply()
                         }
                     )
                 }
@@ -250,7 +287,8 @@ fun QAreAppScreen() {
                         prefs.edit().clear().apply()
                         rollNumber = null
                         pixelStyle = PixelStyle.Rounded
-                        eyeStyle = EyeStyle.Rounded
+                        eyeOutlineStyle = EyeOutlineStyle.Rounded
+                        pupilStyle = PupilStyle.Rounded
                         pixelColor = Color.BLACK
                         eyeColor = Color.BLACK
                         bgColor = blendWithWhite(pixelColor)
@@ -334,7 +372,8 @@ private fun generateQrBitmap(
     eyeColor: Int,
     backgroundColor: Int,
     pixelStyle: PixelStyle,
-    eyeStyle: EyeStyle
+    eyeOutlineStyle: EyeOutlineStyle,
+    pupilStyle: PupilStyle
 ): Bitmap? {
     return try {
         QRCodeUtils.createStyledQr(
@@ -344,7 +383,8 @@ private fun generateQrBitmap(
             eyeColor = eyeColor,
             backgroundColor = backgroundColor,
             pixelStyle = pixelStyle,
-            eyeStyle = eyeStyle
+            eyeOutlineStyle = eyeOutlineStyle,
+            pupilStyle = pupilStyle
         )
     } catch (_: Exception) {
         null
