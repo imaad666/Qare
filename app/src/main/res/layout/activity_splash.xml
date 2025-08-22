@@ -9,19 +9,24 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Q[Are]"
-        android:textSize="32sp"
+        android:textSize="28sp"
         android:textStyle="bold"
+        android:fontFamily="@font/supercharge_jrgpo"
+        android:alpha="0"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="0dp" />
 
     <TextView
         android:id="@+id/footer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="built by imaad"
+        android:text="Built By Imaad"
         android:textSize="12sp"
+        android:fontFamily="@font/requiner_6rrlm"
+        android:alpha="0"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
