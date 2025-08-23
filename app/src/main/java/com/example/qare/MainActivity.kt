@@ -130,10 +130,15 @@ fun QAreAppScreen() {
     var eyeColor by remember { mutableStateOf(prefs.getInt(KEY_EYE_COLOR, Color.parseColor(DEFAULT_EYE_COLOR_HEX))) }
     val backgroundColor by remember(pixelColor) { mutableStateOf(blendWithWhite(pixelColor)) }
 
-    // Load style choices if saved
+    // Load style choices if saved (and coerce disallowed styles)
     LaunchedEffect(Unit) {
         prefs.getString(KEY_PIXEL_STYLE, null)?.let { saved ->
-            PixelStyle.values().firstOrNull { it.name == saved }?.let { pixelStyle = it }
+            if (saved == PixelStyle.Split.name) {
+                pixelStyle = PixelStyle.Rounded
+                prefs.edit().putString(KEY_PIXEL_STYLE, PixelStyle.Rounded.name).apply()
+            } else {
+                PixelStyle.values().firstOrNull { it.name == saved }?.let { pixelStyle = it }
+            }
         }
         // Migrate legacy saved eye style string into outline
         prefs.getString(KEY_EYE_STYLE, null)?.let { legacy ->
@@ -145,10 +150,20 @@ fun QAreAppScreen() {
             }
         }
         prefs.getString(KEY_EYE_OUTLINE_STYLE, null)?.let { saved ->
-            EyeOutlineStyle.values().firstOrNull { it.name == saved }?.let { eyeOutlineStyle = it }
+            if (saved == EyeOutlineStyle.Diamond.name) {
+                eyeOutlineStyle = EyeOutlineStyle.Rounded
+                prefs.edit().putString(KEY_EYE_OUTLINE_STYLE, EyeOutlineStyle.Rounded.name).apply()
+            } else {
+                EyeOutlineStyle.values().firstOrNull { it.name == saved }?.let { eyeOutlineStyle = it }
+            }
         }
         prefs.getString(KEY_PUPIL_STYLE, null)?.let { saved ->
-            PupilStyle.values().firstOrNull { it.name == saved }?.let { pupilStyle = it }
+            if (saved == PupilStyle.TinyDot.name) {
+                pupilStyle = PupilStyle.Rounded
+                prefs.edit().putString(KEY_PUPIL_STYLE, PupilStyle.Rounded.name).apply()
+            } else {
+                PupilStyle.values().firstOrNull { it.name == saved }?.let { pupilStyle = it }
+            }
         }
     }
 
@@ -386,12 +401,15 @@ fun QAreAppScreen() {
                     eyeColor = Color.BLACK
                 },
                 onShuffle = {
-                    // Randomize pixel + eye colors only
+                    // Randomize from allowed sets only
                     val newPixel = Random.nextInt(0x000000, 0xFFFFFF) or 0xFF000000.toInt()
                     val newEye = Random.nextInt(0x000000, 0xFFFFFF) or 0xFF000000.toInt()
-                    val newPixelStyle = PixelStyle.values()[Random.nextInt(PixelStyle.values().size)]
-                    val newEyeOutline = EyeOutlineStyle.values()[Random.nextInt(EyeOutlineStyle.values().size)]
-                    val newPupil = PupilStyle.values()[Random.nextInt(PupilStyle.values().size)]
+                    val allowedPixels = PixelStyle.values().filter { it != PixelStyle.Split }
+                    val allowedEyes = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond }
+                    val allowedPupils = PupilStyle.values().filter { it != PupilStyle.TinyDot }
+                    val newPixelStyle = allowedPixels[Random.nextInt(allowedPixels.size)]
+                    val newEyeOutline = allowedEyes[Random.nextInt(allowedEyes.size)]
+                    val newPupil = allowedPupils[Random.nextInt(allowedPupils.size)]
                     pixelColor = newPixel
                     eyeColor = newEye
                     pixelStyle = newPixelStyle
