@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -93,6 +95,8 @@ import com.example.qare.ui.theme.SuperchargeFamily
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,7 +154,7 @@ fun QAreAppScreen() {
             }
         }
         prefs.getString(KEY_EYE_OUTLINE_STYLE, null)?.let { saved ->
-            if (saved == EyeOutlineStyle.Diamond.name) {
+            if (saved == EyeOutlineStyle.Diamond.name || saved == EyeOutlineStyle.Circle.name) {
                 eyeOutlineStyle = EyeOutlineStyle.Rounded
                 prefs.edit().putString(KEY_EYE_OUTLINE_STYLE, EyeOutlineStyle.Rounded.name).apply()
             } else {
@@ -158,7 +162,7 @@ fun QAreAppScreen() {
             }
         }
         prefs.getString(KEY_PUPIL_STYLE, null)?.let { saved ->
-            if (saved == PupilStyle.TinyDot.name) {
+            if (saved == PupilStyle.TinyDot.name || saved == PupilStyle.ThickBorderDot.name) {
                 pupilStyle = PupilStyle.Rounded
                 prefs.edit().putString(KEY_PUPIL_STYLE, PupilStyle.Rounded.name).apply()
             } else {
@@ -206,6 +210,13 @@ fun QAreAppScreen() {
                     }
             }
         }
+    }
+
+    // Runtime permission launcher for legacy external storage write (Android 9 and below)
+    val writePermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        // No-op here; we check again when trying to save
     }
 
     val backgroundCompose = ComposeColor(backgroundColor)
@@ -346,12 +357,11 @@ fun QAreAppScreen() {
                 item {
                     StyleDropdown(
                         label = "Eye",
-                        options = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond },
+                        options = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond && it != EyeOutlineStyle.Circle },
                         selected = eyeOutlineStyle,
                         toLabel = { (mapOf(
                             EyeOutlineStyle.Square to "Square",
                             EyeOutlineStyle.Rounded to "Rounded",
-                            EyeOutlineStyle.Circle to "Circle",
                             EyeOutlineStyle.Leaf to "Petal",
                             EyeOutlineStyle.Octagon to "Octagon",
                             EyeOutlineStyle.BoldFrame to "Bold Frame",
@@ -370,7 +380,7 @@ fun QAreAppScreen() {
                 item {
                     StyleDropdown(
                         label = "Pupil",
-                        options = PupilStyle.values().filter { it != PupilStyle.TinyDot },
+                        options = PupilStyle.values().filter { it != PupilStyle.TinyDot && it != PupilStyle.ThickBorderDot },
                         selected = pupilStyle,
                         toLabel = { (mapOf(
                             PupilStyle.Square to "Edged",
@@ -380,7 +390,7 @@ fun QAreAppScreen() {
                             PupilStyle.Circle to "Circle",
                             PupilStyle.Diamond to "Diamond",
                             PupilStyle.Cross to "Cross",
-                            PupilStyle.ThickBorderDot to "Thick Border Dot"
+                            
                         )[it] ?: it.toString()) },
                         onSelected = { sel ->
                             pupilStyle = sel
@@ -412,8 +422,8 @@ fun QAreAppScreen() {
                     val newPixel = Random.nextInt(0x000000, 0xFFFFFF) or 0xFF000000.toInt()
                     val newEye = Random.nextInt(0x000000, 0xFFFFFF) or 0xFF000000.toInt()
                     val allowedPixels = PixelStyle.values().filter { it != PixelStyle.Split }
-                    val allowedEyes = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond }
-                    val allowedPupils = PupilStyle.values().filter { it != PupilStyle.TinyDot }
+                    val allowedEyes = EyeOutlineStyle.values().filter { it != EyeOutlineStyle.Diamond && it != EyeOutlineStyle.Circle }
+                    val allowedPupils = PupilStyle.values().filter { it != PupilStyle.TinyDot && it != PupilStyle.ThickBorderDot }
                     val newPixelStyle = allowedPixels[Random.nextInt(allowedPixels.size)]
                     val newEyeOutline = allowedEyes[Random.nextInt(allowedEyes.size)]
                     val newPupil = allowedPupils[Random.nextInt(allowedPupils.size)]
@@ -430,13 +440,23 @@ fun QAreAppScreen() {
                         .putString(KEY_PUPIL_STYLE, newPupil.name)
                         .apply()
                 },
-                onDownload = { format ->
-                    exportQr(
+                onDownloadPng = {
+                    // For Android 9 and below, ensure WRITE_EXTERNAL_STORAGE is granted
+                    val needsLegacyWrite = android.os.Build.VERSION.SDK_INT <= 28
+                    if (needsLegacyWrite) {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                        if (!granted) {
+                            writePermLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            Toast.makeText(context, "Grant storage permission and try again", Toast.LENGTH_SHORT).show()
+                            return@BottomActionBar
+                        }
+                    }
+                    val ok = exportQrPng(
                         context = context,
                         bitmap = qrBitmap,
-                        format = format,
                         baseFileName = "QAre_${today.format(DateTimeFormatter.BASIC_ISO_DATE)}"
                     )
+                    if (ok) Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show() else Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -569,17 +589,16 @@ private fun deriveReadableBackground(pixelColor: Int, eyeColor: Int): Int {
     return if (second.second > first.second) second.first else first.first
 }
 
-private enum class ExportFormat { PNG, PDF /*, SVG*/ }
+// ExportFormat removed; we only support PNG download to the gallery
 
 @Composable
 private fun BottomActionBar(
     pixelColor: Int,
     onReset: () -> Unit,
     onShuffle: () -> Unit,
-    onDownload: (ExportFormat) -> Unit,
+    onDownloadPng: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showDownloadMenu by remember { mutableStateOf(false) }
     val bg = ComposeColor(pixelColor)
     val luminance = (0.299f * bg.red + 0.587f * bg.green + 0.114f * bg.blue)
     val iconColor = if (luminance < 0.5f) ComposeColor.White else ComposeColor.Black
@@ -608,20 +627,13 @@ private fun BottomActionBar(
                 contentDescription = "Shuffle",
                 icon = { Icon(Icons.Filled.Shuffle, contentDescription = null, tint = iconColor) }
             )
-            Box {
-                RoundedActionButton(
-                    pixelColor = pixelColor,
-                    contentColor = iconColor,
-                    onClick = { showDownloadMenu = true },
-                    contentDescription = "Download",
-                    icon = { Icon(Icons.Filled.Download, contentDescription = null, tint = iconColor) }
-                )
-                DropdownMenu(expanded = showDownloadMenu, onDismissRequest = { showDownloadMenu = false }) {
-                    DropdownMenuItem(text = { Text("PNG") }, onClick = { showDownloadMenu = false; onDownload(ExportFormat.PNG) })
-                    DropdownMenuItem(text = { Text("PDF") }, onClick = { showDownloadMenu = false; onDownload(ExportFormat.PDF) })
-                    // DropdownMenuItem(text = { Text("SVG") }, onClick = { showDownloadMenu = false; onDownload(ExportFormat.SVG) })
-                }
-            }
+            RoundedActionButton(
+                pixelColor = pixelColor,
+                contentColor = iconColor,
+                onClick = onDownloadPng,
+                contentDescription = "Download",
+                icon = { Icon(Icons.Filled.Download, contentDescription = null, tint = iconColor) }
+            )
         }
     }
 }
@@ -783,58 +795,46 @@ private fun openUrl(context: Context, url: String) {
     } catch (_: Exception) {}
 }
 
-private fun exportQr(
+private fun exportQrPng(
     context: Context,
     bitmap: Bitmap?,
-    format: ExportFormat,
     baseFileName: String
-) {
-    if (bitmap == null) return
-    when (format) {
-        ExportFormat.PNG -> savePng(context, bitmap, "$baseFileName.png")
-        ExportFormat.PDF -> savePdf(context, bitmap, "$baseFileName.pdf")
-        // ExportFormat.SVG -> saveSvg(...)
-    }
+) : Boolean {
+    if (bitmap == null) return false
+    return savePng(context, bitmap, "$baseFileName.png")
 }
 
-private fun savePng(context: Context, bitmap: Bitmap, fileName: String) {
+private fun savePng(context: Context, bitmap: Bitmap, fileName: String): Boolean {
     try {
-        val contentValues = android.content.ContentValues().apply {
+        val resolver = context.contentResolver
+        val values = android.content.ContentValues().apply {
             put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
-            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/QAre")
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/QAre")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
         }
-        val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         uri?.let {
-            context.contentResolver.openOutputStream(it)?.use { out ->
+            resolver.openOutputStream(it)?.use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.flush()
             }
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                values.clear()
+                values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(it, values, null, null)
+            } else {
+                // Force media scan so image shows up in Gallery immediately on older devices
+                try {
+                    context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, it))
+                } catch (_: Exception) {}
+            }
+            return true
         }
     } catch (_: Exception) {}
-}
-
-private fun savePdf(context: Context, bitmap: Bitmap, fileName: String) {
-    try {
-        val contentValues = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Documents/QAre")
-        }
-        val uri = context.contentResolver.insert(android.provider.MediaStore.Files.getContentUri("external"), contentValues)
-        uri?.let { docUri ->
-            context.contentResolver.openOutputStream(docUri)?.use { out ->
-                val pageWidth = bitmap.width
-                val pageHeight = bitmap.height
-                val pdf = android.graphics.pdf.PdfDocument()
-                val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
-                val page = pdf.startPage(pageInfo)
-                page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                pdf.finishPage(page)
-                pdf.writeTo(out)
-                pdf.close()
-            }
-        }
-    } catch (_: Exception) {}
+    return false
 }
 
 @Composable
