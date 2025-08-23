@@ -128,7 +128,7 @@ fun QAreAppScreen() {
     var pupilStyle by remember { mutableStateOf(PupilStyle.Rounded) }
     var pixelColor by remember { mutableStateOf(prefs.getInt(KEY_PIXEL_COLOR, Color.parseColor(DEFAULT_PIXEL_COLOR_HEX))) }
     var eyeColor by remember { mutableStateOf(prefs.getInt(KEY_EYE_COLOR, Color.parseColor(DEFAULT_EYE_COLOR_HEX))) }
-    val backgroundColor by remember(pixelColor) { mutableStateOf(blendWithWhite(pixelColor)) }
+    val backgroundColor by remember(pixelColor, eyeColor) { mutableStateOf(deriveReadableBackground(pixelColor, eyeColor)) }
 
     // Load style choices if saved (and coerce disallowed styles)
     LaunchedEffect(Unit) {
@@ -209,6 +209,8 @@ fun QAreAppScreen() {
     }
 
     val backgroundCompose = ComposeColor(backgroundColor)
+    val bgLum = (0.299f * backgroundCompose.red + 0.587f * backgroundCompose.green + 0.114f * backgroundCompose.blue)
+    val onBackgroundColor = if (bgLum < 0.5f) ComposeColor.White else ComposeColor.Black
 
     val friendlyPixelLabels = mapOf(
         PixelStyle.Square to "Square",
@@ -306,7 +308,8 @@ fun QAreAppScreen() {
                         onColorChange = { new ->
                             pixelColor = new
                             prefs.edit().putInt(KEY_PIXEL_COLOR, new).apply()
-                        }
+                        },
+                        labelColor = onBackgroundColor
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -318,7 +321,8 @@ fun QAreAppScreen() {
                         onColorChange = { new ->
                             eyeColor = new
                             prefs.edit().putInt(KEY_EYE_COLOR, new).apply()
-                        }
+                        },
+                        labelColor = onBackgroundColor
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -333,7 +337,8 @@ fun QAreAppScreen() {
                             pixelStyle = sel
                             prefs.edit().putString(KEY_PIXEL_STYLE, sel.name).apply()
                         },
-                        backgroundColor = pixelColor
+                        backgroundColor = pixelColor,
+                        labelColor = onBackgroundColor
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -356,7 +361,8 @@ fun QAreAppScreen() {
                             eyeOutlineStyle = sel
                             prefs.edit().putString(KEY_EYE_OUTLINE_STYLE, sel.name).apply()
                         },
-                        backgroundColor = pixelColor
+                        backgroundColor = pixelColor,
+                        labelColor = onBackgroundColor
                     )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -380,7 +386,8 @@ fun QAreAppScreen() {
                             pupilStyle = sel
                             prefs.edit().putString(KEY_PUPIL_STYLE, sel.name).apply()
                         },
-                        backgroundColor = pixelColor
+                        backgroundColor = pixelColor,
+                        labelColor = onBackgroundColor
                     )
                 }
                 item { Spacer(Modifier.height(16.dp)) }
@@ -472,11 +479,12 @@ private fun <T> StyleDropdown(
     selected: T,
     toLabel: (T) -> String,
     onSelected: (T) -> Unit,
-    backgroundColor: Int
+    backgroundColor: Int,
+    labelColor: ComposeColor = ComposeColor.Black
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(label)
+        Text(label, color = labelColor)
         Spacer(Modifier.height(4.dp))
         AppButton(
             text = toLabel(selected),
@@ -511,6 +519,54 @@ private fun blendWithWhite(color: Int): Int {
     val g = (Color.green(color) * 0.2 + Color.green(w) * 0.8).toInt().coerceIn(0, 255)
     val b = (Color.blue(color) * 0.2 + Color.blue(w) * 0.8).toInt().coerceIn(0, 255)
     return Color.rgb(r, g, b)
+}
+
+// Ensure the QR background has sufficient contrast against both pixel and eye colors.
+private fun deriveReadableBackground(pixelColor: Int, eyeColor: Int): Int {
+    fun srgbToLinear(x: Double): Double = if (x <= 0.03928) x / 12.92 else Math.pow((x + 0.055) / 1.055, 2.4)
+    fun luminance(c: Int): Double {
+        val r = srgbToLinear(Color.red(c) / 255.0)
+        val g = srgbToLinear(Color.green(c) / 255.0)
+        val b = srgbToLinear(Color.blue(c) / 255.0)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    fun contrast(a: Int, b: Int): Double {
+        val l1 = luminance(a)
+        val l2 = luminance(b)
+        val hi = maxOf(l1, l2)
+        val lo = minOf(l1, l2)
+        return (hi + 0.05) / (lo + 0.05)
+    }
+    fun blend(from: Int, to: Int, t: Double): Int {
+        val r = (Color.red(from) * (1.0 - t) + Color.red(to) * t).toInt().coerceIn(0, 255)
+        val g = (Color.green(from) * (1.0 - t) + Color.green(to) * t).toInt().coerceIn(0, 255)
+        val b = (Color.blue(from) * (1.0 - t) + Color.blue(to) * t).toInt().coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
+    val pixelLum = luminance(pixelColor)
+    val primaryTarget = if (pixelLum > 0.6) Color.BLACK else Color.WHITE
+    val secondaryTarget = if (primaryTarget == Color.BLACK) Color.WHITE else Color.BLACK
+    val thresholds = 3.0 // WCAG-ish minimum to keep modules distinct
+
+    fun search(target: Int): Pair<Int, Double> {
+        var best = blend(pixelColor, target, 0.8)
+        var bestScore = minOf(contrast(best, pixelColor), contrast(best, eyeColor))
+        var t = 0.8
+        while (t <= 1.0) {
+            val bg = blend(pixelColor, target, t)
+            val score = minOf(contrast(bg, pixelColor), contrast(bg, eyeColor))
+            if (score > bestScore) { best = bg; bestScore = score }
+            if (score >= thresholds) return Pair(bg, score)
+            t += 0.05
+        }
+        return Pair(best, bestScore)
+    }
+
+    val first = search(primaryTarget)
+    if (first.second >= thresholds) return first.first
+    val second = search(secondaryTarget)
+    return if (second.second > first.second) second.first else first.first
 }
 
 private enum class ExportFormat { PNG, PDF /*, SVG*/ }
@@ -820,10 +876,10 @@ private fun ColorSwatch(color: Int, onClick: () -> Unit, size: Dp = 48.dp) {
 }
 
 @Composable
-private fun ColorSetting(label: String, currentColor: Int, onColorChange: (Int) -> Unit) {
+private fun ColorSetting(label: String, currentColor: Int, onColorChange: (Int) -> Unit, labelColor: ComposeColor = ComposeColor.Black) {
     var dialogOpen by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(label)
+        Text(label, color = labelColor)
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ColorSwatch(color = currentColor, onClick = { dialogOpen = true }, size = 36.dp)
