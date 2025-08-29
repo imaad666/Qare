@@ -20,6 +20,19 @@
         android:layout_marginTop="0dp" />
 
     <TextView
+        android:id="@+id/version"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="version 1.2"
+        android:textSize="10sp"
+        android:fontFamily="@font/requiner_6rrlm"
+        android:alpha="0"
+        app:layout_constraintBottom_toTopOf="@id/footer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
         android:id="@+id/footer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

@@ -16,6 +16,7 @@ class SplashActivity : ComponentActivity() {
         setContentView(R.layout.activity_splash)
 
         val title = findViewById<TextView>(R.id.title)
+        val version = findViewById<TextView>(R.id.version)
         val footer = findViewById<TextView>(R.id.footer)
 
         // CRAZY text animation: pop, wobble, color pulse, letter-spacing sweep
@@ -53,14 +54,18 @@ class SplashActivity : ComponentActivity() {
         }
 
         Handler(Looper.getMainLooper()).postDelayed({
-            footer.animate().alpha(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+            version.animate().alpha(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
         }, 900)
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            footer.animate().alpha(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+        }, 1200)
 
         // Navigate after animations
         Handler(Looper.getMainLooper()).postDelayed({
             startActivity(Intent(this, MainActivity::class.java))
             finish()
-        }, 1900)
+        }, 2200)
     }
 }
 
