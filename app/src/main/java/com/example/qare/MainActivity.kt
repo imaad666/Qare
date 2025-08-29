@@ -81,6 +81,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Star
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.time.LocalDate
@@ -116,8 +117,13 @@ private const val KEY_PIXEL_STYLE = "pixel_style"
 private const val KEY_EYE_STYLE = "eye_style" // legacy, will migrate to outline+pupil
 private const val KEY_EYE_OUTLINE_STYLE = "eye_outline_style"
 private const val KEY_PUPIL_STYLE = "pupil_style"
-private const val DEFAULT_PIXEL_COLOR_HEX = "#393939"
-private const val DEFAULT_EYE_COLOR_HEX = "#06B6D4"
+private const val KEY_PRESET_PIXEL_COLOR = "preset_pixel_color"
+private const val KEY_PRESET_EYE_COLOR = "preset_eye_color"
+private const val KEY_PRESET_PIXEL_STYLE = "preset_pixel_style"
+private const val KEY_PRESET_EYE_OUTLINE_STYLE = "preset_eye_outline_style"
+private const val KEY_PRESET_PUPIL_STYLE = "preset_pupil_style"
+private const val DEFAULT_PIXEL_COLOR_HEX = "#EF4444"
+private const val DEFAULT_EYE_COLOR_HEX = "#000000"
 
 @Composable
 fun QAreAppScreen() {
@@ -175,6 +181,18 @@ fun QAreAppScreen() {
     LaunchedEffect(backgroundColor) {
         prefs.edit().putInt(KEY_BG_COLOR, backgroundColor).apply()
     }
+    
+    // Ensure new default colors are applied on first startup
+    LaunchedEffect(Unit) {
+        if (!prefs.contains(KEY_PIXEL_COLOR)) {
+            pixelColor = Color.parseColor(DEFAULT_PIXEL_COLOR_HEX)
+            prefs.edit().putInt(KEY_PIXEL_COLOR, pixelColor).apply()
+        }
+        if (!prefs.contains(KEY_EYE_COLOR)) {
+            eyeColor = Color.parseColor(DEFAULT_EYE_COLOR_HEX)
+            prefs.edit().putInt(KEY_EYE_COLOR, eyeColor).apply()
+        }
+    }
 
     val pickImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -192,7 +210,7 @@ fun QAreAppScreen() {
                             parseRoll(first)?.let { roll ->
                                 rollNumber = roll
                                 prefs.edit().putString(KEY_ROLL, roll).apply()
-                                // Ensure default colors are initialized to #4C4C4C on first setup (or legacy black)
+                                // Ensure default colors are initialized to red pixels and black eyes on first setup
                                 val defaultPixel = Color.parseColor(DEFAULT_PIXEL_COLOR_HEX)
                                 val defaultEye = Color.parseColor(DEFAULT_EYE_COLOR_HEX)
                                 val savedPixel = prefs.getInt(KEY_PIXEL_COLOR, Color.BLACK)
@@ -284,13 +302,15 @@ fun QAreAppScreen() {
             val qrSize = lerp(320.dp, 160.dp, frac)
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             var showAuthorDialog by remember { mutableStateOf(false) }
+            var showQrSplash by remember { mutableStateOf(false) }
+            var showPresetDialog by remember { mutableStateOf(false) }
 
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(start = 20.dp, end = 20.dp),
-                contentPadding = PaddingValues(bottom = 96.dp + bottomInset),
+                contentPadding = PaddingValues(top = 48.dp, bottom = 96.dp + bottomInset),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 item {
@@ -304,7 +324,9 @@ fun QAreAppScreen() {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
                                 contentDescription = "Daily QR",
-                                modifier = Modifier.size(qrSize)
+                                modifier = Modifier
+                                    .size(qrSize)
+                                    .clickable { showQrSplash = true }
                             )
                         }
                     }
@@ -402,7 +424,7 @@ fun QAreAppScreen() {
                 }
                 item { Spacer(Modifier.height(16.dp)) }
                 // Animated gradient Author button
-                item { WildAuthorButton(text = "Author", onClick = { showAuthorDialog = true }) }
+                item { WildAuthorButton(text = "Author", onClick = { showAuthorDialog = true }, textColor = onBackgroundColor) }
             }
 
             // Sticky bottom icon action bar
@@ -416,6 +438,37 @@ fun QAreAppScreen() {
                     pupilStyle = PupilStyle.Rounded
                     pixelColor = Color.BLACK
                     eyeColor = Color.BLACK
+                },
+                onPreset = {
+                    // Load preset values
+                    val presetPixelColor = prefs.getInt(KEY_PRESET_PIXEL_COLOR, pixelColor)
+                    val presetEyeColor = prefs.getInt(KEY_PRESET_EYE_COLOR, eyeColor)
+                    val presetPixelStyle = prefs.getString(KEY_PRESET_PIXEL_STYLE, pixelStyle.name)?.let { 
+                        PixelStyle.values().firstOrNull { style -> style.name == it } 
+                    } ?: pixelStyle
+                    val presetEyeOutlineStyle = prefs.getString(KEY_PRESET_EYE_OUTLINE_STYLE, eyeOutlineStyle.name)?.let { 
+                        EyeOutlineStyle.values().firstOrNull { style -> style.name == it } 
+                    } ?: eyeOutlineStyle
+                    val presetPupilStyle = prefs.getString(KEY_PRESET_PUPIL_STYLE, pupilStyle.name)?.let { 
+                        PupilStyle.values().firstOrNull { style -> style.name == it } 
+                    } ?: pupilStyle
+                    
+                    pixelColor = presetPixelColor
+                    eyeColor = presetEyeColor
+                    pixelStyle = presetPixelStyle
+                    eyeOutlineStyle = presetEyeOutlineStyle
+                    pupilStyle = presetPupilStyle
+                    
+                    prefs.edit()
+                        .putInt(KEY_PIXEL_COLOR, presetPixelColor)
+                        .putInt(KEY_EYE_COLOR, presetEyeColor)
+                        .putString(KEY_PIXEL_STYLE, presetPixelStyle.name)
+                        .putString(KEY_EYE_OUTLINE_STYLE, presetEyeOutlineStyle.name)
+                        .putString(KEY_PUPIL_STYLE, presetPupilStyle.name)
+                        .apply()
+                },
+                onPresetLongPress = {
+                    showPresetDialog = true
                 },
                 onShuffle = {
                     // Randomize from allowed sets only
@@ -466,6 +519,34 @@ fun QAreAppScreen() {
 
             if (showAuthorDialog) {
                 AuthorDialog(onDismiss = { showAuthorDialog = false })
+            }
+            
+            if (showPresetDialog) {
+                PresetEditDialog(
+                    currentPixelColor = pixelColor,
+                    currentEyeColor = eyeColor,
+                    currentPixelStyle = pixelStyle,
+                    currentEyeOutlineStyle = eyeOutlineStyle,
+                    currentPupilStyle = pupilStyle,
+                    onSave = { presetPixelColor, presetEyeColor, presetPixelStyle, presetEyeOutlineStyle, presetPupilStyle ->
+                        prefs.edit()
+                            .putInt(KEY_PRESET_PIXEL_COLOR, presetPixelColor)
+                            .putInt(KEY_PRESET_EYE_COLOR, presetEyeColor)
+                            .putString(KEY_PRESET_PIXEL_STYLE, presetPixelStyle.name)
+                            .putString(KEY_PRESET_EYE_OUTLINE_STYLE, presetEyeOutlineStyle.name)
+                            .putString(KEY_PRESET_PUPIL_STYLE, presetPupilStyle.name)
+                            .apply()
+                        showPresetDialog = false
+                    },
+                    onDismiss = { showPresetDialog = false }
+                )
+            }
+            
+            if (showQrSplash) {
+                QrSplashScreen(
+                    qrBitmap = qrBitmap,
+                    onDismiss = { showQrSplash = false }
+                )
             }
         }
     }
@@ -595,6 +676,8 @@ private fun deriveReadableBackground(pixelColor: Int, eyeColor: Int): Int {
 private fun BottomActionBar(
     pixelColor: Int,
     onReset: () -> Unit,
+    onPreset: () -> Unit,
+    onPresetLongPress: () -> Unit,
     onShuffle: () -> Unit,
     onDownloadPng: () -> Unit,
     modifier: Modifier = Modifier
@@ -619,6 +702,13 @@ private fun BottomActionBar(
                 onClick = onReset,
                 contentDescription = "Reset",
                 icon = { Icon(Icons.Filled.Restore, contentDescription = null, tint = ComposeColor.White) }
+            )
+            PresetActionButton(
+                pixelColor = pixelColor,
+                contentColor = iconColor,
+                onClick = onPreset,
+                onLongClick = onPresetLongPress,
+                contentDescription = "Preset"
             )
             RoundedActionButton(
                 pixelColor = pixelColor,
@@ -662,64 +752,67 @@ private fun RoundedActionButton(
 }
 
 @Composable
-private fun WildAuthorButton(text: String, onClick: () -> Unit) {
-    // Five independent oscillating centers for organic motion
-    val t = rememberInfiniteTransition(label = "wild")
-    val a by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(2200, easing = LinearEasing)), label = "a")
-    val b by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(2600, easing = LinearEasing)), label = "b")
-    val c by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3000, easing = LinearEasing)), label = "c")
-    val d by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3400, easing = LinearEasing)), label = "d")
-    val e by t.animateFloat(0f, 2f * PI.toFloat(), infiniteRepeatable(animation = tween(3800, easing = LinearEasing)), label = "e")
+private fun PresetActionButton(
+    pixelColor: Int,
+    contentColor: ComposeColor,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    contentDescription: String,
+    size: Dp = 56.dp
+) {
+    val shape = androidx.compose.foundation.shape.CircleShape
+    Box(
+        modifier = Modifier
+            .size(size)
+            .shadow(6.dp, shape)
+            .background(ComposeColor(pixelColor), shape = shape)
+            .border(width = 2.dp, color = ComposeColor.Black, shape = shape)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Star, // Using a star icon for preset
+            contentDescription = contentDescription,
+            tint = contentColor
+        )
+    }
+}
 
-    val corner = 22.dp
+@Composable
+private fun WildAuthorButton(text: String, onClick: () -> Unit, textColor: ComposeColor = ComposeColor.Black) {
+    val corner = 25.dp
     Box(
         modifier = Modifier
             .wrapContentWidth()
-            .height(44.dp)
+            .height(48.dp)
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(corner))
-            .background(ComposeColor.Black.copy(alpha = 0f))
+            .background(
+                color = ComposeColor(0xFFE0E0E0.toInt()).copy(alpha = 0.3f), // Translucent light gray
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(corner)
+            )
+            .border(
+                width = 1.dp,
+                color = ComposeColor(0xFFCECECE.toInt()).copy(alpha = 0.6f), // Translucent border
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(corner)
+            )
+            .shadow(
+                elevation = 8.dp,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(corner),
+                spotColor = ComposeColor(0xFFBCBCBC.toInt()).copy(alpha = 0.4f),
+                ambientColor = ComposeColor(0xFFFFFFFF.toInt()).copy(alpha = 0.3f)
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        // Fluid, non-repeating, fully opaque multi-radial gradient layer
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val r = kotlin.math.min(w, h) * 1.2f
-
-            val centers = listOf(
-                Offset(w * (0.3f + 0.16f * cos(a)), h * (0.5f + 0.18f * sin(a))),  // purple
-                Offset(w * (0.7f + 0.18f * cos(b)), h * (0.4f + 0.20f * sin(b))),  // blue
-                Offset(w * (0.5f + 0.20f * cos(c)), h * (0.6f + 0.18f * sin(c))),  // green
-                Offset(w * (0.4f + 0.22f * cos(d)), h * (0.45f + 0.20f * sin(d))), // red
-                Offset(w * (0.6f + 0.15f * cos(e)), h * (0.55f + 0.15f * sin(e)))  // yellow
-            )
-            val colors = listOf(
-                ComposeColor(0xFF7C3AED.toInt()), // purple
-                ComposeColor(0xFF3B82F6.toInt()), // blue
-                ComposeColor(0xFF22C55E.toInt()), // green
-                ComposeColor(0xFFEF4444.toInt()), // red
-                ComposeColor(0xFFF59E0B.toInt())  // yellow
-            )
-
-            // Paint overlapping opaque radial gradients to avoid straight lines and transparency
-            centers.forEachIndexed { i, center ->
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(colors[i], colors[i].copy(alpha = 0.9f), colors[i].copy(alpha = 0.8f)),
-                        center = center,
-                        radius = r
-                    ),
-                    center = center,
-                    radius = r
-                )
-            }
-        }
-
         val display = text.trim().lowercase().replaceFirstChar { it.titlecase() }
         Text(
             text = display,
-            color = ComposeColor.White,
+            color = textColor, // Use the passed text color parameter
             fontFamily = RequinerFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
@@ -1041,6 +1134,79 @@ private fun ColorPickerDialog(
             }
         }
     )
+}
+
+@Composable
+private fun PresetEditDialog(
+    currentPixelColor: Int,
+    currentEyeColor: Int,
+    currentPixelStyle: PixelStyle,
+    currentEyeOutlineStyle: EyeOutlineStyle,
+    currentPupilStyle: PupilStyle,
+    onSave: (Int, Int, PixelStyle, EyeOutlineStyle, PupilStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { 
+                onSave(currentPixelColor, currentEyeColor, currentPixelStyle, currentEyeOutlineStyle, currentPupilStyle)
+            }) { 
+                Text("Save Preset", color = ComposeColor(0xFF22C55E.toInt())) 
+            }
+        },
+        dismissButton = { 
+            TextButton(onClick = onDismiss) { 
+                Text("Cancel", color = ComposeColor(0xFFEF4444.toInt())) 
+            }
+        },
+        title = {
+            Text(
+                "Save Current Style as Preset",
+                fontFamily = RequinerFamily,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "This will save your current customization as a preset.",
+                    fontFamily = RequinerFamily,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Tap the star button to apply the preset instantly!",
+                    fontFamily = RequinerFamily,
+                    textAlign = TextAlign.Center,
+                    fontSize = 12.sp,
+                    color = ComposeColor.Gray
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun QrSplashScreen(
+    qrBitmap: Bitmap?,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ComposeColor.Black)
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        qrBitmap?.let { bmp ->
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = "Full Screen QR",
+                modifier = Modifier.fillMaxSize(0.9f)
+            )
+        }
+    }
 }
 
 private fun generateQrBitmap(
